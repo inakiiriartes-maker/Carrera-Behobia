@@ -208,6 +208,144 @@
     line-height:1.6;
   }
 
+  /* --- Registro de entrenamientos --- */
+  .summary-card{
+    background:var(--panel);
+    border:1px solid var(--run);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-bottom:16px;
+  }
+  .summary-card.empty{
+    color:var(--muted);
+    font-size:13.5px;
+    line-height:1.5;
+    border-color:var(--line);
+  }
+  .summary-title{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:16px;
+    letter-spacing:0.04em;
+    color:var(--run);
+    margin-bottom:10px;
+  }
+  .summary-stats{
+    display:flex;
+    gap:22px;
+    flex-wrap:wrap;
+    margin-bottom:8px;
+  }
+  .summary-stats > div{display:flex;flex-direction:column;}
+  .stat-num{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:26px;
+    line-height:1;
+  }
+  .stat-label{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .summary-note{
+    font-size:13px;
+    color:var(--text);
+    line-height:1.5;
+    margin-top:6px;
+  }
+  .summary-note.warn{color:var(--run);}
+
+  .log-area{margin-top:8px;}
+  .log-toggle-btn{
+    appearance:none;
+    background:none;
+    border:1px dashed var(--line);
+    color:var(--muted);
+    font-size:12px;
+    padding:5px 10px;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  .log-toggle-btn:hover{color:var(--text);border-color:var(--muted);}
+
+  .log-form{
+    margin-top:8px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px;
+  }
+  .log-form-row{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin-bottom:6px;
+  }
+  .log-input{
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:6px;
+    padding:6px 8px;
+    font-size:13px;
+    font-family:'Inter',sans-serif;
+  }
+  .log-distance{width:70px;}
+  .log-time{width:90px;}
+  .log-feel{flex:1;min-width:120px;}
+  .log-notes{width:100%;margin-bottom:8px;}
+  .log-form-actions{display:flex;gap:8px;}
+  .log-save-btn, .log-cancel-btn{
+    appearance:none;
+    border:none;
+    border-radius:6px;
+    padding:6px 12px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .log-save-btn{background:var(--run);color:#0E1113;}
+  .log-cancel-btn{background:none;color:var(--muted);border:1px solid var(--line);}
+
+  .log-result{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    font-size:13px;
+  }
+  .log-stat{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:2px 10px;
+    font-size:12px;
+  }
+  .log-feel-display{font-size:13px;}
+  .log-edit-btn, .log-delete-btn{
+    appearance:none;
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-size:12px;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:0;
+  }
+  .log-delete-btn:hover{color:var(--run);}
+  .log-edit-btn:hover{color:var(--text);}
+  .log-notes-display{
+    font-size:12.5px;
+    color:var(--muted);
+    font-style:italic;
+    margin-top:4px;
+  }
+  .log-valoracion-line{
+    font-size:12.5px;
+    color:var(--text);
+    line-height:1.5;
+    margin-top:4px;
+  }
+
   @media (max-width:480px){
     .session{grid-template-columns:48px 1fr;}
   }
@@ -387,13 +525,172 @@ function currentWeekIndex(){
   return -1;
 }
 
-function sessionRow(s, type){
+const tabCarrera = document.getElementById('tab-carrera');
+const tabGimnasio = document.getElementById('tab-gimnasio');
+const panelCarrera = document.getElementById('panel-carrera');
+const panelGimnasio = document.getElementById('panel-gimnasio');
+
+// --- Registro de entrenamientos (localStorage) ---
+const LOG_KEY = 'behobia_training_log_v1';
+let editingId = null;
+
+function loadLog(){
+  try{ return JSON.parse(localStorage.getItem(LOG_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function saveLog(log){
+  localStorage.setItem(LOG_KEY, JSON.stringify(log));
+}
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+function parseTime(str){
+  if(!str) return null;
+  const parts = str.trim().split(':').map(p => p.trim());
+  if(parts.length === 0 || parts.length > 3) return null;
+  if(parts.some(p => p === '' || isNaN(Number(p)))) return null;
+  const nums = parts.map(Number);
+  let h=0, m=0, s=0;
+  if(nums.length === 3){ [h,m,s] = nums; }
+  else if(nums.length === 2){ [m,s] = nums; }
+  else { [m] = nums; }
+  const total = h*60 + m + s/60;
+  return total > 0 ? total : null;
+}
+function formatPace(minPerKm){
+  if(!isFinite(minPerKm) || minPerKm <= 0) return '—';
+  const m = Math.floor(minPerKm);
+  const s = Math.round((minPerKm - m) * 60);
+  return `${m}:${String(s).padStart(2,'0')}/km`;
+}
+function formatDuration(totalMin){
+  const h = Math.floor(totalMin/60);
+  const m = Math.floor(totalMin%60);
+  const s = Math.round((totalMin*60) % 60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    : `${m}:${String(s).padStart(2,'0')}`;
+}
+const FEEL_LABEL = {
+  genial:'😃 Genial', bien:'🙂 Bien', normal:'😐 Normal',
+  duro:'😓 Duro', muyduro:'🥵 Muy duro'
+};
+function paceTargetFor(kind){
+  const k = kind.toLowerCase();
+  if(k.includes('tempo')) return {min:5.83, max:6.17, label:'tempo (~5:50–6:10/km)'};
+  if(k.includes('series')) return null;
+  if(k.includes('fácil') || k.includes('fondo')) return {min:6.5, max:7.0, label:'fácil (6:30–7:00/km)'};
+  return null;
+}
+function valoracionLines(entry, target){
+  const lines = [];
+  if(target){
+    if(entry.pace < target.min - 0.25){
+      lines.push(`⚡ Más rápido de lo previsto para ritmo ${target.label}. Vigila no forzar en un día pensado para ser suave.`);
+    } else if(entry.pace > target.max + 0.4){
+      lines.push(`🐢 Ritmo más lento de lo previsto (objetivo ${target.label}).`);
+    } else {
+      lines.push(`✅ Ritmo dentro de lo previsto (${target.label}).`);
+    }
+  }
+  if(entry.feel === 'duro' || entry.feel === 'muyduro'){
+    lines.push('Sensaciones duras — si se repite en la próxima sesión, considera bajar el ritmo o añadir descanso.');
+  } else if(entry.feel === 'genial'){
+    lines.push('Sensaciones muy buenas 💪');
+  }
+  return lines;
+}
+function computeTrend(entries){
+  const paced = entries.filter(e => e.pace).sort((a,b) => a.weekN - b.weekN || a.idx - b.idx);
+  if(paced.length < 4) return null;
+  const half = Math.floor(paced.length/2);
+  const avg = arr => arr.reduce((s,e) => s+e.pace, 0) / arr.length;
+  const a1 = avg(paced.slice(0, half));
+  const a2 = avg(paced.slice(half));
+  const diff = a1 - a2;
+  if(diff > 0.15) return `📈 Tu ritmo medio ha bajado de ${formatPace(a1)} a ${formatPace(a2)}. ¡Vas mejorando!`;
+  if(diff < -0.15) return `📉 Tu ritmo medio ha subido de ${formatPace(a1)} a ${formatPace(a2)}. Puede ser fatiga acumulada o rodajes más largos — vigila el descanso.`;
+  return `➡️ Ritmo medio estable en torno a ${formatPace(a2)}.`;
+}
+function renderSummaryHtml(){
+  const log = loadLog();
+  const entries = Object.values(log);
+  if(entries.length === 0){
+    return `<div class="summary-card empty">Aún no has registrado ningún entrenamiento. Pulsa "+ Registrar entrenamiento" en una sesión de carrera para guardar km, tiempo y sensaciones — aquí verás tu resumen y valoraciones.</div>`;
+  }
+  const totalPlanned = weeks.reduce((acc,w) => acc + w.run.length, 0);
+  let totalKm = 0, totalMin = 0;
+  entries.forEach(e => { totalKm += e.distance; totalMin += e.durationMin; });
+  const trend = computeTrend(entries);
+  const sorted = entries.slice().sort((a,b) => a.weekN - b.weekN || a.idx - b.idx);
+  const lastTwo = sorted.slice(-2);
+  const fatigueStreak = lastTwo.length === 2 && lastTwo.every(e => e.feel === 'duro' || e.feel === 'muyduro');
+  return `<div class="summary-card">
+    <div class="summary-title">TU RENDIMIENTO</div>
+    <div class="summary-stats">
+      <div><span class="stat-num">${entries.length}</span><span class="stat-label">de ${totalPlanned} sesiones</span></div>
+      <div><span class="stat-num">${totalKm.toFixed(1)}</span><span class="stat-label">km totales</span></div>
+      <div><span class="stat-num">${formatPace(totalMin/totalKm)}</span><span class="stat-label">ritmo medio</span></div>
+    </div>
+    ${trend ? `<div class="summary-note">${trend}</div>` : ''}
+    ${fatigueStreak ? `<div class="summary-note warn">⚠️ Tus dos últimas sesiones registradas fueron duras. Considera un día extra de descanso o bajar el ritmo.</div>` : ''}
+  </div>`;
+}
+function renderLogArea(id, s, weekN, idx){
+  const log = loadLog();
+  const entry = log[id];
+  const target = paceTargetFor(s.kind);
+
+  if(entry && editingId !== id){
+    const lines = valoracionLines(entry, target);
+    return `<div class="log-area" data-id="${id}" data-week="${weekN}" data-idx="${idx}">
+      <div class="log-result">
+        <span class="log-stat">${entry.distance} km</span>
+        <span class="log-stat">${formatDuration(entry.durationMin)}</span>
+        <span class="log-stat">${formatPace(entry.pace)}</span>
+        <span class="log-feel-display">${FEEL_LABEL[entry.feel] || ''}</span>
+        <button type="button" class="log-edit-btn" data-action="edit">editar</button>
+        <button type="button" class="log-delete-btn" data-action="delete">borrar</button>
+      </div>
+      ${entry.notes ? `<div class="log-notes-display">"${escapeHtml(entry.notes)}"</div>` : ''}
+      ${lines.map(l => `<div class="log-valoracion-line">${l}</div>`).join('')}
+    </div>`;
+  }
+
+  const d = entry ? entry.distance : '';
+  const t = entry ? formatDuration(entry.durationMin) : '';
+  const f = entry ? entry.feel : 'bien';
+  const n = entry ? entry.notes : '';
+  return `<div class="log-area" data-id="${id}" data-week="${weekN}" data-idx="${idx}">
+    <button type="button" class="log-toggle-btn" data-action="toggle" ${entry ? 'hidden' : ''}>+ Registrar entrenamiento</button>
+    <form class="log-form" ${entry ? '' : 'hidden'}>
+      <div class="log-form-row">
+        <input type="number" step="0.01" min="0" inputmode="decimal" class="log-input log-distance" placeholder="km" value="${d}">
+        <input type="text" inputmode="numeric" class="log-input log-time" placeholder="tiempo mm:ss" value="${t}">
+        <select class="log-input log-feel">
+          ${Object.entries(FEEL_LABEL).map(([v,l]) => `<option value="${v}" ${v===f?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <input type="text" class="log-input log-notes" placeholder="Notas (opcional)" value="${escapeHtml(n)}">
+      <div class="log-form-actions">
+        <button type="submit" class="log-save-btn">Guardar</button>
+        <button type="button" class="log-cancel-btn" data-action="cancel">Cancelar</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+function sessionRow(s, type, weekN, idx){
+  const isRun = type === 'run';
   return `<div class="session ${type}">
     <div class="day">${s.day}</div>
     <div>
       <div class="kind">${s.kind}</div>
       <div class="detail">${s.detail}</div>
       ${s.sub ? `<div class="sub">${s.sub}</div>` : ''}
+      ${isRun ? renderLogArea(`w${weekN}-${idx}`, s, weekN, idx) : ''}
     </div>
   </div>`;
 }
@@ -402,7 +699,7 @@ function renderWeeks(type){
   const curIdx = currentWeekIndex();
   const accent = type === 'run' ? 'var(--run)' : 'var(--gym)';
   return weeks.map((w, i) => {
-    const sessions = (type === 'run' ? w.run : w.gym).map(s => sessionRow(s, type)).join('');
+    const sessions = (type === 'run' ? w.run : w.gym).map((s, si) => sessionRow(s, type, w.n, si)).join('');
     const raceBanner = (type === 'run' && w.race) ? `
       <div class="race-banner">
         <span class="kind">DOM 15 NOV — CARRERA</span>
@@ -422,14 +719,72 @@ function renderWeeks(type){
   }).join('');
 }
 
-document.getElementById('panel-carrera').innerHTML = renderWeeks('run');
-document.getElementById('panel-gimnasio').innerHTML = renderWeeks('gym');
-updateCountdown();
+function renderCarreraPanel(){
+  panelCarrera.innerHTML = renderSummaryHtml() + renderWeeks('run');
+}
 
-const tabCarrera = document.getElementById('tab-carrera');
-const tabGimnasio = document.getElementById('tab-gimnasio');
-const panelCarrera = document.getElementById('panel-carrera');
-const panelGimnasio = document.getElementById('panel-gimnasio');
+panelCarrera.addEventListener('click', function(e){
+  const toggleBtn = e.target.closest('[data-action="toggle"]');
+  const cancelBtn = e.target.closest('[data-action="cancel"]');
+  const editBtn = e.target.closest('[data-action="edit"]');
+  const deleteBtn = e.target.closest('[data-action="delete"]');
+
+  if(toggleBtn){
+    const area = toggleBtn.closest('.log-area');
+    area.querySelector('.log-form').hidden = false;
+    toggleBtn.hidden = true;
+  } else if(cancelBtn){
+    editingId = null;
+    renderCarreraPanel();
+  } else if(editBtn){
+    editingId = editBtn.closest('.log-area').dataset.id;
+    renderCarreraPanel();
+  } else if(deleteBtn){
+    const id = deleteBtn.closest('.log-area').dataset.id;
+    if(confirm('¿Borrar este registro de entrenamiento?')){
+      const log = loadLog();
+      delete log[id];
+      saveLog(log);
+      renderCarreraPanel();
+    }
+  }
+});
+
+panelCarrera.addEventListener('submit', function(e){
+  const form = e.target.closest('.log-form');
+  if(!form) return;
+  e.preventDefault();
+  const area = form.closest('.log-area');
+  const weekN = Number(area.dataset.week);
+  const idx = Number(area.dataset.idx);
+  const id = area.dataset.id;
+
+  const distance = parseFloat(form.querySelector('.log-distance').value);
+  const durationMin = parseTime(form.querySelector('.log-time').value);
+  const feel = form.querySelector('.log-feel').value;
+  const notes = form.querySelector('.log-notes').value.trim();
+
+  if(!distance || distance <= 0 || durationMin === null){
+    alert('Introduce una distancia (km) y un tiempo (mm:ss o h:mm:ss) válidos.');
+    return;
+  }
+
+  const w = weeks.find(w => w.n === weekN);
+  const s = w.run[idx];
+  const log = loadLog();
+  log[id] = {
+    distance, durationMin, pace: durationMin / distance,
+    feel, notes, weekN, idx,
+    kind: s.kind, detail: s.detail, savedAt: Date.now()
+  };
+  saveLog(log);
+  editingId = null;
+  renderCarreraPanel();
+});
+
+renderCarreraPanel();
+panelGimnasio.innerHTML = renderWeeks('gym');
+updateCountdown();
 
 function selectTab(tab){
   const isRun = tab === 'carrera';
